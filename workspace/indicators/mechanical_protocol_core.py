@@ -108,7 +108,7 @@ def compute_long_condition(df, ind, entry_start, entry_end, rsi_threshold, max_g
     )
 
 
-def simulate_trades(df, long_condition, time_exit):
+def simulate_trades(df, long_condition, time_exit, rr_ratio=1.0):
     """
     One SIGNAL per day (not one trade): the first bar that satisfies
     long_condition locks in a resting buy-stop at that bar's high. It is
@@ -117,8 +117,9 @@ def simulate_trades(df, long_condition, time_exit):
     above that level (any bar the same day) or the day ends, whichever
     comes first. If it never fills, no further signal is sought that day.
     SL/TP are computed at FILL time, not signal time: SL is the low of the
-    bar immediately before the fill bar, and risk/TP are measured off the
-    actual fill price, so a gap-through fill doesn't skew R:R.
+    bar immediately before the fill bar, and TP is fill_price + risk *
+    rr_ratio (default 1.0 = original 1:1), so both are measured off the
+    actual fill price and a gap-through fill doesn't skew R:R.
 
     Returns (trades, state) where state has the end-of-data position/pending/
     signal_locked/trade_taken_today -- useful for "what's happening right now".
@@ -147,7 +148,7 @@ def simulate_trades(df, long_condition, time_exit):
                 fill_price = max(pending["entry"], row["open"])
                 sl = df.iloc[i - 1]["low"] if i > 0 else row["low"]
                 risk = fill_price - sl
-                tp = fill_price + risk
+                tp = fill_price + risk * rr_ratio
                 position = {
                     "entry": fill_price, "sl": sl, "tp": tp,
                     "entry_time": ts, "entry_idx": i,
@@ -191,9 +192,49 @@ def simulate_trades(df, long_condition, time_exit):
     return trades, state
 
 
+def compute_metrics(trades):
+    """
+    Aggregate performance metrics from a list of trade dicts (as returned
+    by simulate_trades). max_drawdown_r is the worst peak-to-trough decline
+    in cumulative R across the trade sequence -- total_r alone hides a
+    strategy that made its money back after a brutal losing streak.
+    """
+    if not trades:
+        return {
+            "num_trades": 0, "win_rate": 0.0, "total_r": 0.0, "avg_r": 0.0,
+            "max_drawdown_r": 0.0, "profit_factor": 0.0,
+        }
+    r_values = [t["R"] for t in trades]
+    wins = [r for r in r_values if r > 0]
+    losses = [r for r in r_values if r <= 0]
+    total_r = sum(r_values)
+
+    cum, peak, max_dd = 0.0, 0.0, 0.0
+    for r in r_values:
+        cum += r
+        peak = max(peak, cum)
+        max_dd = max(max_dd, peak - cum)
+
+    gross_win = sum(wins)
+    gross_loss = abs(sum(losses))
+    if gross_loss > 0:
+        profit_factor = gross_win / gross_loss
+    else:
+        profit_factor = float("inf") if gross_win > 0 else 0.0
+
+    return {
+        "num_trades": len(r_values),
+        "win_rate": round(len(wins) / len(r_values) * 100, 1),
+        "total_r": round(total_r, 2),
+        "avg_r": round(total_r / len(r_values), 3),
+        "max_drawdown_r": round(max_dd, 2),
+        "profit_factor": round(profit_factor, 2) if profit_factor != float("inf") else profit_factor,
+    }
+
+
 def run_symbol(client, symbol, exchange, interval, start_date, end_date,
                sma_len, rsi_len, rsi_threshold, max_gap_filter,
-               entry_start, entry_end, time_exit):
+               entry_start, entry_end, time_exit, rr_ratio=1.0):
     """Fetch + compute everything for one symbol in one call."""
     df = fetch_data(client, symbol, exchange, interval, start_date, end_date)
     if df.empty or len(df) < max(sma_len, rsi_len) + 5:
@@ -208,7 +249,7 @@ def run_symbol(client, symbol, exchange, interval, start_date, end_date,
     df["true_gap_pct"] = df["day"].map(true_gap_by_day)
 
     long_condition = compute_long_condition(df, ind, entry_start, entry_end, rsi_threshold, max_gap_filter)
-    trades, state = simulate_trades(df, long_condition, time_exit)
+    trades, state = simulate_trades(df, long_condition, time_exit, rr_ratio)
 
     return {
         "df": df, "ind": ind, "days_sorted": days_sorted,

@@ -87,6 +87,7 @@ MAX_GAP_FILTER = float(os.getenv("MAX_GAP_FILTER", "1.0"))
 ENTRY_START = dtime(*map(int, os.getenv("ENTRY_START", "9:15").split(":")))
 ENTRY_END = dtime(*map(int, os.getenv("ENTRY_END", "14:15").split(":")))
 TIME_EXIT = dtime(*map(int, os.getenv("TIME_EXIT", "14:30").split(":")))
+RR_RATIO = float(os.getenv("RR_RATIO", "1.0"))
 
 STRATEGY_NAME = os.getenv("STRATEGY_NAME", "MechanicalProtocol")
 STRATEGY_ID = os.getenv("STRATEGY_ID", "mechanical_protocol_local")
@@ -165,7 +166,7 @@ def process_symbol(ex, sym):
     result = run_symbol(
         client, sym, ex, INTERVAL, start_date, end_date,
         SMA_LEN, RSI_LEN, RSI_THRESHOLD, MAX_GAP_FILTER,
-        ENTRY_START, ENTRY_END, TIME_EXIT,
+        ENTRY_START, ENTRY_END, TIME_EXIT, RR_RATIO,
     )
     df = result["df"]
     last_day = df.index[-1].date()
@@ -224,6 +225,7 @@ def main():
     print(f"Mechanical Protocol forward-test started at {datetime.now()}")
     print(f"Watchlist ({len(WATCHLIST)}): {', '.join(f'{ex}:{sym}' for ex, sym in WATCHLIST)}")
     print(f"Interval: {INTERVAL} | Qty: {QUANTITY} | Product: {PRODUCT} | Poll: {POLL_SECONDS}s")
+    print(f"Filters: RSI>{RSI_THRESHOLD} | RR={RR_RATIO}:1 | Session {ENTRY_START}-{ENTRY_END} | Time exit {TIME_EXIT}")
     print("Reminder: confirm Sandbox/Analyzer mode is ON before treating fills as paper trades.")
 
     while True:
