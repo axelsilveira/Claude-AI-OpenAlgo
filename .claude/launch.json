@@ -1,0 +1,27 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "mechanical-protocol-dashboard",
+      "runtimeExecutable": "uv",
+      "runtimeArgs": [
+        "run", "--group", "analysis", "streamlit", "run",
+        "workspace/indicators/dashboards/mechanical_protocol/app.py",
+        "--server.headless", "true",
+        "--server.port", "8502"
+      ],
+      "port": 8502
+    },
+    {
+      "name": "mechanical-protocol-scanner",
+      "runtimeExecutable": "uv",
+      "runtimeArgs": [
+        "run", "--group", "analysis", "streamlit", "run",
+        "workspace/indicators/scanners/mechanical_protocol_watchlist_scan.py",
+        "--server.headless", "true",
+        "--server.port", "8503"
+      ],
+      "port": 8503
+    }
+  ]
+}
