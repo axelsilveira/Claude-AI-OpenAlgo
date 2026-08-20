@@ -522,29 +522,21 @@ class BrokerData:
                     # Get candles from response
                     candles = response.get("candles", [])
                     if candles:
-                        # Handle dynamic column count based on whether OI is enabled
-                        if enable_oi and len(candles[0]) == 7:
-                            # Derivatives with OI: [timestamp, open, high, low, close, volume, oi]
-                            df = pd.DataFrame(
-                                candles,
-                                columns=[
-                                    "timestamp",
-                                    "open",
-                                    "high",
-                                    "low",
-                                    "close",
-                                    "volume",
-                                    "oi",
-                                ],
-                            )
-                        else:
-                            # Equity without OI: [timestamp, open, high, low, close, volume]
-                            df = pd.DataFrame(
-                                candles,
-                                columns=["timestamp", "open", "high", "low", "close", "volume"],
-                            )
-                            # Add zero OI column for consistency
-                            df["oi"] = 0
+                        # Fyers' continuous (cont_flag=1) data -- used for any
+                        # range wider than one contract's life, e.g. multi-year
+                        # MCX commodity pulls -- can mix 6- and 7-element rows
+                        # within the SAME chunk (OI apparently absent on some
+                        # historical/rolled legs). Trusting only candles[0]'s
+                        # length crashed pd.DataFrame with "N columns passed,
+                        # passed data had M columns" on real NATGASMINI history.
+                        # Normalize every row independently to the full
+                        # [timestamp, open, high, low, close, volume, oi]
+                        # contract instead, padding missing OI with 0.
+                        normalized = [list(row[:7]) + [0] * (7 - len(row)) for row in candles]
+                        df = pd.DataFrame(
+                            normalized,
+                            columns=["timestamp", "open", "high", "low", "close", "volume", "oi"],
+                        )
 
                         dfs.append(df)
                         logger.debug(
@@ -581,7 +573,7 @@ class BrokerData:
             # If no data was found, return empty DataFrame
             if not dfs:
                 logger.warning("No data was collected for the entire period")
-                return pd.DataFrame(columns=["timestamp", "open", "high", "low", "close", "volume"])
+                return pd.DataFrame(columns=["timestamp", "open", "high", "low", "close", "volume", "oi"])
 
             # Combine all chunks
             final_df = pd.concat(dfs, ignore_index=True)
